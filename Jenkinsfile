@@ -22,13 +22,8 @@ pipeline {
     }
     
     options {
-        // Keep builds for 30 days
         buildDiscarder(logRotator(daysToKeepStr: '30', numToKeepStr: '20'))
-        
-        // Timeout after 20 minutes
         timeout(time: 20, unit: 'MINUTES')
-        
-        // Timestamps in console output
         timestamps()
     }
     
@@ -41,8 +36,6 @@ pipeline {
                     echo "Branch: ${env.GIT_BRANCH ?: 'main'}"
                     echo "Workspace: ${WORKSPACE}"
                 }
-                
-                // Verify project structure
                 script {
                     if (!fileExists('functions/__init__.py')) {
                         error "❌ Functions package not found!"
@@ -57,28 +50,14 @@ pipeline {
         
         stage('🐍 Python Environment') {
             steps {
-                script {
-                    echo "Setting up Python environment..."
-                }
-                
+                script { echo "Setting up Python environment..." }
                 sh '''
-                    # Clean up any existing venv
                     rm -rf ${VIRTUAL_ENV}
-                    
-                    # Create new virtual environment
                     python3 -m venv ${VIRTUAL_ENV}
-                    
-                    # Activate and install dependencies
                     . ${VIRTUAL_ENV}/bin/activate
-                    
-                    # Upgrade pip
                     python -m pip install --upgrade pip
-                    
-                    # Install required packages
                     pip install pandas numpy sqlalchemy pymssql
                     pip install pytest pytest-cov
-                    
-                    # Verify installation
                     python -c "import pandas, numpy, sqlalchemy; print('✅ Core packages installed')"
                     python --version
                 '''
@@ -89,9 +68,7 @@ pipeline {
             parallel {
                 stage('Test: guess_column_types') {
                     steps {
-                        script {
-                            echo "Testing guess_column_types function..."
-                        }
+                        script { echo "Testing guess_column_types function..." }
                         sh '''
                             . ${VIRTUAL_ENV}/bin/activate
                             cd tests
@@ -99,12 +76,9 @@ pipeline {
                         '''
                     }
                 }
-                
                 stage('Test: filter_issue_date_range') {
                     steps {
-                        script {
-                            echo "Testing filter_issue_date_range function..."
-                        }
+                        script { echo "Testing filter_issue_date_range function..." }
                         sh '''
                             . ${VIRTUAL_ENV}/bin/activate
                             cd tests
@@ -112,12 +86,9 @@ pipeline {
                         '''
                     }
                 }
-                
                 stage('Test: clean_missing_values') {
                     steps {
-                        script {
-                            echo "Testing clean_missing_values function..."
-                        }
+                        script { echo "Testing clean_missing_values function..." }
                         sh '''
                             . ${VIRTUAL_ENV}/bin/activate
                             cd tests
@@ -129,24 +100,15 @@ pipeline {
         }
         
         stage('🔍 ETL Validation') {
-            when {
-                expression { currentBuild.result != 'FAILURE' }
-            }
+            when { expression { currentBuild.result != 'FAILURE' } }
             steps {
-                script {
-                    echo "Validating ETL pipeline components..."
-                }
-                
+                script { echo "Validating ETL pipeline components..." }
                 sh '''
                     . ${VIRTUAL_ENV}/bin/activate
-                    
-                    # Test imports
                     python -c "
 from functions import guess_column_types, filter_issue_date_range, clean_missing_values
 print('✅ All functions imported successfully')
 "
-                    
-                    # Check data file
                     if [ -f "${DATA_FILE}" ]; then
                         echo "✅ Data file found: ${DATA_FILE}"
                         python -c "
@@ -156,43 +118,28 @@ print(f'✅ Data file readable: {len(df.columns)} columns')
 "
                     else
                         echo "⚠️  Data file not found: ${DATA_FILE}"
-                        echo "Will skip data-dependent tests"
                     fi
                 '''
             }
         }
         
         stage('🔄 ETL Processing') {
-            when {
-                expression { currentBuild.result != 'FAILURE' }
-            }
+            when { expression { currentBuild.result != 'FAILURE' } }
             steps {
-                script {
-                    echo "Running ETL pipeline with sample data..."
-                }
-                
+                script { echo "Running ETL pipeline with sample data..." }
                 sh '''
                     . ${VIRTUAL_ENV}/bin/activate
-                    
-                    # Run ETL pipeline (without deployment)
                     python etl_pipeline.py
                 '''
             }
         }
         
         stage('📤 Deploy to Database') {
-            when {
-                expression { currentBuild.result != 'FAILURE' }
-            }
+            when { expression { currentBuild.result != 'FAILURE' } }
             steps {
-                script {
-                    echo "Deploying to database..."
-                }
-                
+                script { echo "Deploying to database..." }
                 sh '''
                     . ${VIRTUAL_ENV}/bin/activate
-                    
-                    # Run ETL pipeline with deployment
                     python etl_pipeline.py --deploy
                 '''
             }
@@ -207,16 +154,16 @@ print(f'✅ Data file readable: {len(df.columns)} columns')
                 echo "Duration: ${currentBuild.durationString}"
                 echo "Result: ${currentBuild.result ?: 'SUCCESS'}"
             }
-            
-            // Clean up
-            sh '''
-                # Clean up virtual environment
-                rm -rf ${VIRTUAL_ENV} || echo "Virtual environment cleanup completed"
-                
-                # Clean up Python cache
-                find . -name "*.pyc" -delete 2>/dev/null || echo "Python cache cleaned"
-                find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || echo "Pycache cleaned"
-            '''
+            // ✅ ครอบ sh ด้วย node + dir
+            node(env.NODE_NAME ?: null) {
+                dir(env.WORKSPACE ?: '.') {
+                    sh '''
+                        rm -rf ${VIRTUAL_ENV} || echo "Virtual environment cleanup completed"
+                        find . -name "*.pyc" -delete 2>/dev/null || echo "Python cache cleaned"
+                        find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || echo "Pycache cleaned"
+                    '''
+                }
+            }
         }
         
         success {
