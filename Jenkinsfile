@@ -2,20 +2,13 @@ pipeline {
     agent any
     
     environment {
-        // Database configuration
         DB_SERVER = '34.30.35.116'
         DB_NAME = 'TestDB'
         DB_USERNAME = 'SA'
-        DB_PASSWORD = credentials('mssql-password')  // ต้องสร้างใน Jenkins credentials
-        
-        // Python environment
+        DB_PASSWORD = credentials('mssql-password')
         PYTHON_VERSION = '3.9'
         VIRTUAL_ENV = 'venv'
-        
-        // Project paths
         DATA_FILE = 'data/LoanStats_web_small.csv'
-        
-        // Pipeline configuration
         MAX_NULL_PERCENTAGE = '30'
         MIN_YEAR = '2016'
         MAX_YEAR = '2019'
@@ -37,12 +30,8 @@ pipeline {
                     echo "Workspace: ${WORKSPACE}"
                 }
                 script {
-                    if (!fileExists('functions/__init__.py')) {
-                        error "❌ Functions package not found!"
-                    }
-                    if (!fileExists('etl_pipeline.py')) {
-                        error "❌ ETL pipeline script not found!"
-                    }
+                    if (!fileExists('functions/__init__.py')) { error "❌ Functions package not found!" }
+                    if (!fileExists('etl_pipeline.py')) { error "❌ ETL pipeline script not found!" }
                     echo "✅ Project structure verified"
                 }
             }
@@ -144,31 +133,31 @@ print(f'✅ Data file readable: {len(df.columns)} columns')
                 '''
             }
         }
+
+        // ✅ ทำความสะอาดที่นี่ แทนที่จะไปทำใน post (จะได้ไม่ไปติดรอคิว)
+        stage('🧹 Cleanup') {
+            steps {
+                script { echo "Cleaning up workspace and venv..." }
+                sh '''
+                    rm -rf ${VIRTUAL_ENV} || echo "Virtual environment cleanup completed"
+                    find . -name "*.pyc" -delete 2>/dev/null || echo "Python cache cleaned"
+                    find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || echo "Pycache cleaned"
+                '''
+                // หรือถ้าใช้ปลั๊กอิน Workspace Cleanup:
+                // cleanWs()
+            }
+        }
     }
     
     post {
         always {
-            script {
-                echo "=== Pipeline Completed ==="
-                echo "Build Number: ${BUILD_NUMBER}"
-                echo "Duration: ${currentBuild.durationString}"
-                echo "Result: ${currentBuild.result ?: 'SUCCESS'}"
-            }
-            // ✅ ครอบ sh ด้วย node + dir
-            node(env.NODE_NAME ?: null) {
-                dir(env.WORKSPACE ?: '.') {
-                    sh '''
-                        rm -rf ${VIRTUAL_ENV} || echo "Virtual environment cleanup completed"
-                        find . -name "*.pyc" -delete 2>/dev/null || echo "Python cache cleaned"
-                        find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || echo "Pycache cleaned"
-                    '''
-                }
-            }
+            echo "=== Pipeline Completed ==="
+            echo "Build Number: ${BUILD_NUMBER}"
+            echo "Duration: ${currentBuild.durationString}"
+            echo "Result: ${currentBuild.result ?: 'SUCCESS'}"
         }
-        
         success {
-            script {
-                def message = """
+            echo """
 🎉 ETL Pipeline succeeded!
 ✅ All tests passed
 ✅ ETL processing completed
@@ -177,13 +166,9 @@ print(f'✅ Data file readable: {len(df.columns)} columns')
 Build: ${BUILD_NUMBER}
 Duration: ${currentBuild.durationString}
 """
-                echo message
-            }
         }
-        
         failure {
-            script {
-                def message = """
+            echo """
 ❌ ETL Pipeline failed!
 
 Build: ${BUILD_NUMBER}
@@ -191,14 +176,9 @@ Duration: ${currentBuild.durationString}
 
 Please check the console output for details.
 """
-                echo message
-            }
         }
-        
         unstable {
-            script {
-                echo "⚠️  ETL Pipeline unstable - some tests may have failed"
-            }
+            echo "⚠️  ETL Pipeline unstable - some tests may have failed"
         }
     }
 }
